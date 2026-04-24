@@ -38,7 +38,7 @@ Download and parse the catalog CSV:
 ```python
 import urllib.request, csv, io
 
-URL = "https://docs.google.com/spreadsheets/d/1RPDx3UsLAT8SKCqaNag9FvF3fFepi-qC2qCoKFksfJ0/export?format=csv"
+URL = "https://raw.githubusercontent.com/CescVilanova/gym-recommender/main/catalog.csv"
 with urllib.request.urlopen(URL) as r:
     content = r.read().decode('utf-8')
 reader = csv.DictReader(io.StringIO(content))

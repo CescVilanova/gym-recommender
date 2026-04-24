@@ -1,3 +1,7 @@
+## [apr 24, 2026, 2:15 PM] - Add product catalog CSV for Routine access
+- What changed: Add product catalog CSV for Routine access
+- Why: Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
 ## [apr 24, 2026, 1:45 PM] - Update logo URL to GitHub raw asset path
 - What changed: Update logo URL to GitHub raw asset path
 - Why: Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
