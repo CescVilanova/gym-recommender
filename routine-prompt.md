@@ -131,7 +131,7 @@ pip install reportlab --break-system-packages -q
 ### Download the logo
 ```python
 import urllib.request, os
-LOGO_URL = "REPLACE_WITH_PUBLIC_LOGO_URL"  # e.g. raw GitHub URL to logo.png
+LOGO_URL = "https://raw.githubusercontent.com/CescVilanova/gym-recommender/main/assets/logo_transparent.png"
 LOGO_PATH = "/tmp/progym_logo.png"
 if not os.path.exists(LOGO_PATH):
     urllib.request.urlretrieve(LOGO_URL, LOGO_PATH)
