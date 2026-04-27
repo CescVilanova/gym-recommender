@@ -15,6 +15,15 @@ import sys, os, csv, io, json, random, subprocess, urllib.request
 from datetime import date, timedelta
 from pathlib import Path
 
+# Load .env from project root (two levels up from scripts/)
+_env_file = Path(__file__).parent.parent / ".env"
+if _env_file.exists():
+    for _line in _env_file.read_text().splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _, _v = _line.partition("=")
+            os.environ.setdefault(_k.strip(), _v.strip())
+
 SCRIPTS_DIR = Path(__file__).parent
 CATALOG_URL = "https://raw.githubusercontent.com/CescVilanova/gym-recommender/main/catalog.csv"
 LOGO_URL    = "https://raw.githubusercontent.com/CescVilanova/gym-recommender/main/assets/logo_transparent.png"
