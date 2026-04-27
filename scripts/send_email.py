@@ -1,26 +1,23 @@
 #!/usr/bin/env python3
 """
 ProGym Email Sender
-Sends a PDF quote via Gmail SMTP with attachment.
+Sends a PDF quote via Resend API (HTTPS) with attachment.
 
 Required env vars:
-  GMAIL_SENDER       — the Gmail address used to send (e.g. sales@progym.es)
-  GMAIL_APP_PASSWORD — Gmail App Password (16 chars, no spaces)
-                       Create at: https://myaccount.google.com/apppasswords
+  RESEND_API_KEY  — API key from resend.com (free tier: 100 emails/day)
+  EMAIL_FROM      — Verified sender address in Resend (e.g. sales@progym.es)
+                    For testing, use "onboarding@resend.dev" with your own address as TO
 
 Usage:
   python3 send_email.py <to_address> <pdf_path> <quote_number> \
       <client_name> <space_m2> <space_type> <objective> <nivel> <total_str>
 """
 
-import os, sys, smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.application import MIMEApplication
+import os, sys, json, base64
+import urllib.request, urllib.error
 from pathlib import Path
 
-SMTP_HOST = "smtp.gmail.com"
-SMTP_PORT = 587
+RESEND_API_URL = "https://api.resend.com/emails"
 
 HTML_TEMPLATE = """\
 <div style="font-family: Arial, sans-serif; color: #1A1A1A; max-width: 600px;">
@@ -75,14 +72,15 @@ def send_quote(to_address: str, pdf_path: str, quote_number: str,
                client_name: str, space_m2: str, space_type: str,
                objective: str, nivel: str, total: str) -> None:
 
-    sender = os.environ.get("GMAIL_SENDER")
-    app_pw = os.environ.get("GMAIL_APP_PASSWORD")
+    api_key  = os.environ.get("RESEND_API_KEY")
+    from_addr = os.environ.get("EMAIL_FROM", "ProGym <onboarding@resend.dev>")
 
-    if not sender or not app_pw:
+    if not api_key:
         raise EnvironmentError(
-            "Faltan variables de entorno GMAIL_SENDER y/o GMAIL_APP_PASSWORD.\n"
-            "Crea una App Password en https://myaccount.google.com/apppasswords\n"
-            "y añádela al entorno antes de ejecutar."
+            "Falta RESEND_API_KEY.\n"
+            "1. Crea cuenta gratuita en https://resend.com\n"
+            "2. Genera un API key en resend.com/api-keys\n"
+            "3. Añade RESEND_API_KEY=re_xxxx al archivo .env"
         )
 
     pdf_path = Path(pdf_path)
@@ -92,33 +90,40 @@ def send_quote(to_address: str, pdf_path: str, quote_number: str,
     ctx = dict(client_name=client_name, space_m2=space_m2, space_type=space_type,
                objective=objective, nivel=nivel, total=total)
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"Tu propuesta personalizada de gimnasio en casa — ProGym (#{quote_number})"
-    msg["From"]    = f"ProGym Equipment <{sender}>"
-    msg["To"]      = to_address
-
-    msg.attach(MIMEText(PLAIN_TEMPLATE.format(**ctx), "plain", "utf-8"))
-    msg.attach(MIMEText(HTML_TEMPLATE.format(**ctx),  "html",  "utf-8"))
-
-    # Re-wrap as mixed to attach PDF
-    outer = MIMEMultipart("mixed")
-    outer["Subject"] = msg["Subject"]
-    outer["From"]    = msg["From"]
-    outer["To"]      = msg["To"]
-    outer.attach(msg)
-
     with open(pdf_path, "rb") as f:
-        pdf_part = MIMEApplication(f.read(), _subtype="pdf")
-    pdf_part.add_header("Content-Disposition", "attachment", filename=pdf_path.name)
-    outer.attach(pdf_part)
+        pdf_b64 = base64.b64encode(f.read()).decode("ascii")
 
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-        server.ehlo()
-        server.starttls()
-        server.login(sender, app_pw)
-        server.sendmail(sender, [to_address], outer.as_string())
+    payload = {
+        "from":    from_addr,
+        "to":      [to_address],
+        "subject": f"Tu propuesta personalizada de gimnasio en casa — ProGym (#{quote_number})",
+        "html":    HTML_TEMPLATE.format(**ctx),
+        "text":    PLAIN_TEMPLATE.format(**ctx),
+        "attachments": [
+            {
+                "filename": pdf_path.name,
+                "content":  pdf_b64,
+            }
+        ],
+    }
 
-    print(f"✓ Email enviado a {to_address} con adjunto {pdf_path.name}")
+    req = urllib.request.Request(
+        RESEND_API_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type":  "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req) as resp:
+            result = json.loads(resp.read())
+        print(f"✓ Email enviado a {to_address} | id={result.get('id')} | adjunto: {pdf_path.name}")
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()
+        raise RuntimeError(f"Resend API error {e.code}: {body}")
 
 
 if __name__ == "__main__":
