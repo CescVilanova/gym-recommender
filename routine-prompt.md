@@ -42,7 +42,7 @@ URL = "https://raw.githubusercontent.com/CescVilanova/gym-recommender/main/catal
 with urllib.request.urlopen(URL) as r:
     content = r.read().decode('utf-8')
 reader = csv.DictReader(io.StringIO(content))
-catalog = list(reader)
+catalog = [row for row in reader if row.get('Código', '').strip()]
 ```
 
 Key columns:
@@ -55,6 +55,7 @@ Key columns:
 - `Espacio ok` — allowed space types (pipe or / separated)
 - `Objetivos` — matched objectives (pipe separated)
 - `Nivel recomendado` — skill level
+- `Intensidad soportada *` — usage intensity (Doméstica ligera / Doméstica intensiva / Semi-pro)
 - `Rol en setup` — Esencial / Complementario / Accesorio / Almacenamiento
 - `Combina con` — recommended pairings (SKU references)
 - `Categoría` — product category
@@ -87,37 +88,139 @@ Key columns:
 
 ---
 
+## Step 3b — Space feasibility
+
+Compute `usable_space` before running any footprint checks:
+
+```
+usable_space = metros_cuadrados × 0.80   (garaje / local / exterior)
+usable_space = metros_cuadrados × 0.75   (habitación / salón)
+```
+
+This buffer accounts for aisle space, wall clearance, and safety margins around moving parts (treadmill belt runoff, barbell path). Use `usable_space` — not raw `metros_cuadrados` — in every footprint check throughout Step 4.
+
+Also initialise two tracking variables that persist through the rest of Step 4:
+
+```python
+budget_ceiling         = budget_cap * 0.88   # hard spend limit (IVA-included, after 12% discount)
+budget_used_discounted = 0.0                  # running total (IVA-included, after 12% discount)
+total_footprint        = 0.0                  # running sum of Footprint uso m²
+```
+
+---
+
 ## Step 4 — Select products
 
 ### Hard filters (eliminate non-qualifying rows)
 1. `Espacio ok` includes the customer's space type OR is "cualquiera"
 2. `Nivel recomendado` matches customer's level
 3. `Altura mín m *` ≤ assumed ceiling height (skip rows with empty altura)
+4. `Intensidad soportada *` matches the customer's profile (rows with empty value always pass):
+   - Gimnasio en casa + principiante → allow: Doméstica ligera, Doméstica intensiva
+   - Gimnasio en casa + intermedio   → allow: Doméstica intensiva, Semi-pro
+   - Gimnasio en casa + avanzado     → allow: Semi-pro (preferred), Doméstica intensiva; **exclude** Doméstica ligera
+   - Comercial / local / gym         → allow: Semi-pro only
+   - Rehabilitación objetivo         → allow: Doméstica ligera, Doméstica intensiva
+   - Soft preference: within the allowed set, rank Semi-pro items higher for intermedio/avanzado
 
 ### Bundle construction
-Build a bundle that:
-- Fits within the customer's m² (sum of `Footprint uso m² *` for all selected items)
-- Stays within budget_cap × 0.88 (leaves 12% headroom — 10% discount + delivery margin)
-- Covers all customer objectives as completely as possible
 
-**Priority order:**
-1. All "Esencial" items for each relevant category (cardio if pérdida peso; fuerza if ganancia muscular)
-2. "Complementario" items that match the most objective tags
-3. "Accesorio" items to fill remaining budget/space
+Build a bundle that covers all customer objectives within `usable_space` and `budget_ceiling`. Follow these phases in order.
 
-**Objective-driven anchors:**
-- Pérdida de peso → prioritize G799/G620 (cinta), G930/G815 (elíptica), R250/R900 (remo)
-- Ganancia muscular → prioritize PL700 (squat rack), PL090 (banco regulable), IR92316 (mancuernas), IR91054A (discos)
-- Mixed (both) → one cardio essential + one strength essential, then balance
+---
 
-**Always add** VF97660 (ligas, 28€) and IR97510 (tapete, 30€) — they add value at negligible cost.
+#### Phase A — Cardio anchor (one-primary-cardio rule)
 
-**Discount:** apply 12% to all items (home gym, intermediate customer).
+Track `cardio_slots_used = 0` (max 2). Skip this phase if the customer has no cardio objective (pérdida peso / salud general).
+
+**Step 1 — Score all filtered cardio rows** (Categoría starts with "Cardio" OR equals "Ciclo indoor"):
+- +2 if footprint ≤ `usable_space × 0.35`
+- +2 if Intensidad soportada is Semi-pro (for intermedio/avanzado) or Doméstica intensiva (for principiante)
+- +1 per matching objective tag in `Objetivos`
+- Tiebreak: price ascending
+
+**Step 2 — Pick exactly one primary cardio machine:**
+- Select the highest-scoring row with `Rol` containing "Esencial cardio". If none survive hard filters, fall back to "Entry cardio", then "Complementario" from any cardio sub-category.
+- Add to bundle. `cardio_slots_used = 1`.
+
+**Step 3 — Optionally add one complementary cardio** (different Categoría sub-category only):
+
+| Primary selected | May add |
+|---|---|
+| Cinta de correr | Remo OR Ciclo indoor (not both) |
+| Elíptica | Ciclo indoor only |
+| Remo | Ciclo indoor only |
+| Ciclo indoor | No second cardio |
+
+Add only if it fits within remaining `usable_space` and `budget_ceiling`. If added, `cardio_slots_used = 2`. Never select two machines from the same sub-category.
+
+---
+
+#### Phase B — Strength anchor
+
+If objective includes "ganancia muscular", add in priority order:
+1. One rack: prefer PL700 (Half Rack) if ceiling height ≥ 2.3 m and space allows, else PL400 (Smith)
+2. One bench that appears in the selected rack's `Combina con` list (prefer PL090 adjustable)
+3. IR92316 (mancuernas) if space/budget allows
+4. IR91054A (discos) if space/budget allows
+5. IR92304S (barras) if space/budget allows
+
+For mixed objectives (pérdida peso + ganancia muscular): add one rack OR one bench (not both) as the strength anchor, then proceed to Phase C.
+
+---
+
+#### Phase C — Complementarios + Accesorios
+
+Add remaining filtered Complementario items ranked by objective tag match count (descending), then Accesorio items. Stop when `budget_ceiling` or `usable_space` is exhausted.
+
+**Always add** VF97660 (ligas, 28€) and IR97510 (tapete, 30€) if they pass hard filters and fit budget/space — they add value at negligible cost.
+
+**Discount:** apply 12% to all items. Update `budget_used_discounted` and `total_footprint` after each addition.
+
+---
+
+#### Phase D — Upgrade pass
+
+After Phase C, compute:
+```
+available_headroom = budget_ceiling − budget_used_discounted
+```
+
+For each selected product, check if a higher-tier variant in the same sub-category fits within `available_headroom`:
+
+| Current SKU | Upgrade SKU | Approx. extra cost |
+|---|---|---|
+| G799 | G620 | +800 € |
+| G815 | G930 | +550 € |
+| H920 | H921 | +100 € |
+| H921 | H925 | +170 € |
+| H925 | H945BM | +360 € |
+| PL400 | PL700 | +250 € |
+
+If `available_headroom × 0.88 ≥ extra_cost` AND the upgrade passes all hard filters, swap to the upgraded product. Apply at most one upgrade per sub-category. Recalculate `available_headroom` after each swap.
+
+---
+
+#### Phase E — Expansion pass
+
+```python
+budget_target = budget_cap * 0.75
+```
+
+If `budget_used_discounted < budget_target`, add more items in this order until the target is met or no eligible items remain:
+
+1. **Category completion via `Combina con`:** For each selected product, check its `Combina con` SKUs. If any are in the filtered catalog and not yet in the bundle, add them (checking space + headroom).
+   - Example: PL700 selected → check PL090, IR92304S, IR91054A
+   - Example: IR92316 selected → check IT7022 (dumbbell rack)
+2. **Remaining Complementario items** not yet in bundle, ranked by objective tag count.
+3. **Remaining Accesorio items** not yet in bundle.
+
+---
 
 ### Validation
-- Confirm total footprint ≤ customer m²
-- Confirm discounted total ≤ budget_cap
-- If over budget, drop lowest-priority Complementario items until it fits
+- Confirm `total_footprint` ≤ `usable_space`; if over, drop lowest-priority Complementario items first
+- Confirm `budget_used_discounted` ≤ `budget_ceiling`; if over, drop lowest-priority Complementario items first
+- Compute final: `budget_utilization_pct = round(budget_used_discounted / budget_cap * 100, 1)`
 
 ---
 
@@ -224,6 +327,27 @@ def _meta_row(data):
     ]))
     return t
 
+def _section_header(label, rationale=None):
+    lbl_s = ParagraphStyle('SH_lbl', fontName='Helvetica-Bold', fontSize=9,
+                            textColor=ORANGE, leading=12)
+    rat_s = ParagraphStyle('SH_rat', fontName='Helvetica-Oblique', fontSize=7,
+                            textColor=DARK_GRAY, leading=10, spaceAfter=1*mm)
+    content_col = [[Paragraph(label, lbl_s)]]
+    if rationale:
+        content_col.append([Paragraph(rationale, rat_s)])
+    inner = Table(content_col, colWidths=[CONTENT_W - 6*mm])
+    inner.setStyle(TableStyle([('LEFTPADDING',(0,0),(-1,-1),4),('RIGHTPADDING',(0,0),(-1,-1),0),
+                                ('TOPPADDING',(0,0),(-1,-1),2),('BOTTOMPADDING',(0,0),(-1,-1),2)]))
+    accent_bar = Table([['']], colWidths=[3*mm],
+                       style=TableStyle([('BACKGROUND',(0,0),(0,0),ORANGE),
+                                         ('LEFTPADDING',(0,0),(-1,-1),0),('RIGHTPADDING',(0,0),(-1,-1),0),
+                                         ('TOPPADDING',(0,0),(-1,-1),0),('BOTTOMPADDING',(0,0),(-1,-1),0)]))
+    accent = Table([[accent_bar, inner]], colWidths=[3*mm, CONTENT_W-3*mm])
+    accent.setStyle(TableStyle([('LEFTPADDING',(0,0),(-1,-1),0),('RIGHTPADDING',(0,0),(-1,-1),0),
+                                 ('TOPPADDING',(0,0),(-1,-1),0),('BOTTOMPADDING',(0,0),(-1,-1),0),
+                                 ('VALIGN',(0,0),(-1,-1),'TOP')]))
+    return [accent, Spacer(1, 2*mm)]
+
 def _items_table(items):
     IMG_W  = 18*mm; DESC_W = CONTENT_W*0.28; UNID_W = 13*mm; DISC_W = 13*mm
     rem    = CONTENT_W - IMG_W - DESC_W - UNID_W - DISC_W
@@ -310,8 +434,16 @@ def build_quote(data, output_path):
     story.append(Paragraph(f"Presupuesto # {data['quote_number']}", title_s))
     story.append(_meta_row(data))
     story.append(Spacer(1, 8*mm))
-    story.append(_items_table(data['items']))
-    story.append(Spacer(1, 5*mm))
+    sections = data.get('sections')
+    if sections:
+        for sec in sections:
+            for flowable in _section_header(sec.get('label', ''), sec.get('rationale')):
+                story.append(flowable)
+            story.append(_items_table(sec['items']))
+            story.append(Spacer(1, 4*mm))
+    else:
+        story.append(_items_table(data['items']))
+        story.append(Spacer(1, 5*mm))
     story.append(KeepTogether(_totals_block(data['items'])))
     if data.get('notes'):
         story.append(Spacer(1, 6*mm))
@@ -331,30 +463,96 @@ if __name__ == '__main__':
 ```python
 import random, subprocess, json
 from datetime import date, timedelta
+from collections import OrderedDict
 
-today      = date.today()
-expiry     = today + timedelta(days=30)
-quote_num  = f"2026{random.randint(100000,999999)}"
+today     = date.today()
+expiry    = today + timedelta(days=30)
+quote_num = f"2026{random.randint(100000,999999)}"
 
+# ── Assign each selected item to a display section ────────────────────────────
+def _section_for(categoria):
+    c = categoria.lower()
+    if c.startswith('cardio') or c == 'ciclo indoor':
+        return 'Cardio'
+    if c.startswith('peso libre'):
+        return 'Fuerza y Peso libre'
+    return 'Funcional y Accesorios'
+
+sections_map = OrderedDict([
+    ('Cardio',               []),
+    ('Fuerza y Peso libre',  []),
+    ('Funcional y Accesorios', []),
+])
+# selected_items_with_cat is a list of (item_dict, categoria_str) built in Step 4
+for item_dict, cat in selected_items_with_cat:
+    sections_map[_section_for(cat)].append(item_dict)
+
+# ── Build per-section rationale sentences ─────────────────────────────────────
+rationale = {}
+if sections_map['Cardio']:
+    cardio_name = sections_map['Cardio'][0]['name']
+    rationale['Cardio'] = (
+        f"Para tu objetivo, hemos seleccionado {cardio_name} como máquina de cardio "
+        f"principal — ideal para tu espacio de {metros_cuadrados} m² y nivel {nivel}."
+    )
+if sections_map['Fuerza y Peso libre']:
+    fuerza_names = ' y '.join(i['name'] for i in sections_map['Fuerza y Peso libre'][:2])
+    rationale['Fuerza y Peso libre'] = (
+        f"Para el trabajo de fuerza, {fuerza_names} cubren los principales patrones "
+        f"de movimiento compound adaptados a tu nivel {nivel}."
+    )
+
+sections = [
+    {
+        "label":     label,
+        "rationale": rationale.get(label),
+        "items":     items,
+    }
+    for label, items in sections_map.items()
+    if items
+]
+
+# ── Dynamic notes (3 paragraphs) ──────────────────────────────────────────────
+notes_parts = [
+    f"El equipamiento seleccionado ocupa {total_footprint:.1f} m² de huella de uso, "
+    f"en un espacio aprovechable estimado de {usable_space:.1f} m² "
+    f"(de tus {metros_cuadrados} m² totales). "
+    f"Presupuesto utilizado: {budget_used_discounted:,.0f} € de {budget_cap:,.0f} € "
+    f"disponibles ({budget_utilization_pct}%).",
+]
+for label in ('Cardio', 'Fuerza y Peso libre'):
+    if label in rationale:
+        notes_parts.append(rationale[label])
+notes_parts.append(
+    "Presupuesto válido 30 días. Precios sujetos a disponibilidad de stock. "
+    "IVA incluido en precios unitarios. Descuento del 12% aplicado."
+)
+notes_text = "  ".join(notes_parts)
+
+# ── Flat item list (for _totals_block compatibility) ─────────────────────────
+all_items = [item for sec in sections for item in sec['items']]
+
+# ── quote_data ────────────────────────────────────────────────────────────────
 quote_data = {
-    "quote_number": quote_num,
-    "date": today.strftime('%d/%m/%Y'),
-    "expiry_date": expiry.strftime('%d/%m/%Y'),
-    "client_name": client_name,        # derived from email in Step 1
+    "quote_number":  quote_num,
+    "date":          today.strftime('%d/%m/%Y'),
+    "expiry_date":   expiry.strftime('%d/%m/%Y'),
+    "client_name":   client_name,
     "client_address": "España",
-    "commercial": "Sales Department",
-    "items": selected_items,           # built in Step 4
-    "notes": "Presupuesto válido 30 días. Precios sujetos a disponibilidad de stock. IVA incluido en precios unitarios."
+    "commercial":    "Sales Department",
+    "sections":      sections,
+    "items":         all_items,
+    "notes":         notes_text,
 }
 
-client_slug  = client_email.split('@')[0]
-output_path  = f"/tmp/Presupuesto_ProGym_{client_slug}_{today.strftime('%Y%m%d')}.pdf"
+client_slug = client_email.split('@')[0]
+output_path = f"/tmp/Presupuesto_ProGym_{client_slug}_{today.strftime('%Y%m%d')}.pdf"
 
 subprocess.run(['python3', '/tmp/generate_quote.py',
                 json.dumps(quote_data), output_path], check=True)
 ```
 
-The `selected_items` list must use this structure per item:
+Each item in a section must follow this structure:
 ```json
 {
   "sku": "[G799]",
@@ -366,6 +564,8 @@ The `selected_items` list must use this structure per item:
 }
 ```
 
+Build `selected_items_with_cat` during Step 4 as a list of `(item_dict, row['Categoría'])` tuples so the sectioning code above can group them correctly.
+
 ---
 
 ## Step 6 — Send via Gmail
@@ -373,21 +573,27 @@ The `selected_items` list must use this structure per item:
 Use the Gmail MCP connector to send the PDF as an attachment.
 
 ```
-To: {email from Step 1}
-Subject: Tu propuesta personalizada de gimnasio en casa — ProGym
+To: {client_email}
+Subject: Tu propuesta personalizada de gimnasio — ProGym
 Body (in Spanish):
 
-Hola,
+Hola {client_name},
 
-Te adjuntamos tu propuesta personalizada de equipamiento para tu gimnasio en casa.
+Hemos preparado tu propuesta personalizada de equipamiento para tu {tipo_de_proyecto}.
 
-Hemos seleccionado los productos que mejor se adaptan a tu espacio ({m²} m², {tipo de espacio}), 
-tu objetivo ({objetivo}) y tu nivel ({nivel}).
+RESUMEN DE TU SETUP:
+{for each section in sections: "• {section.label}: {comma-joined product names}"}
 
-El presupuesto incluye un {discount}% de descuento. Es válido durante 30 días.
+¿POR QUÉ ESTA SELECCIÓN?
+{for each section that has a rationale: one sentence from rationale[section.label]}
 
-Si tienes alguna pregunta o quieres ajustar la selección, responde a este correo o 
-llámanos al +34 93 271 27 91.
+DATOS DEL PRESUPUESTO:
+• Espacio cubierto: {total_footprint:.1f} m² de huella (espacio aprovechable: {usable_space:.1f} m²)
+• Total con descuento del 12%: {budget_used_discounted:,.0f} € ({budget_utilization_pct}% de tu presupuesto)
+• Válido hasta: {expiry_date}
+
+Si quieres ajustar la selección (cambiar la máquina de cardio, modificar el presupuesto
+o añadir algún equipo específico), responde a este correo o llámanos al +34 93 271 27 91.
 
 ¡A entrenar!
 El equipo de ProGym

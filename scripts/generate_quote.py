@@ -211,9 +211,16 @@ def build_quote(data: dict, output_path: str):
     story.append(_meta_row(data))
     story.append(Spacer(1, 8 * mm))
 
-    # ── Items table ───────────────────────────────────────────────────────────
-    story.append(_items_table(data['items']))
-    story.append(Spacer(1, 5 * mm))
+    # ── Items: grouped sections or flat fallback ─────────────────────────────
+    sections = data.get('sections')
+    if sections:
+        for sec in sections:
+            story += _section_header(sec.get('label', ''), sec.get('rationale'))
+            story.append(_items_table(sec['items']))
+            story.append(Spacer(1, 4 * mm))
+    else:
+        story.append(_items_table(data['items']))
+        story.append(Spacer(1, 5 * mm))
 
     # ── Totals (kept together on same page) ──────────────────────────────────
     story.append(KeepTogether(_totals_block(data['items'])))
@@ -255,6 +262,52 @@ def _meta_row(data: dict) -> Table:
         ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
     ]))
     return t
+
+
+# ── Section header (orange accent bar + label + optional rationale) ───────────
+def _section_header(label: str, rationale: str | None = None) -> list:
+    """Return a list of flowables: an accent-bar table + optional spacer."""
+    lbl_s = ParagraphStyle(
+        'SH_lbl', fontName='Helvetica-Bold', fontSize=9,
+        textColor=ORANGE, leading=12,
+    )
+    rat_s = ParagraphStyle(
+        'SH_rat', fontName='Helvetica-Oblique', fontSize=7,
+        textColor=DARK_GRAY, leading=10, spaceAfter=1 * mm,
+    )
+    content_col = [[Paragraph(label, lbl_s)]]
+    if rationale:
+        content_col.append([Paragraph(rationale, rat_s)])
+
+    inner = Table(content_col, colWidths=[CONTENT_W - 6 * mm])
+    inner.setStyle(TableStyle([
+        ('LEFTPADDING',   (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
+        ('TOPPADDING',    (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ]))
+
+    # Orange left-border accent: 1-row outer table, first cell is a thin orange bar
+    accent = Table(
+        [[Table([['']], colWidths=[3 * mm],
+                style=TableStyle([
+                    ('BACKGROUND',    (0, 0), (0, 0), ORANGE),
+                    ('LEFTPADDING',   (0, 0), (-1, -1), 0),
+                    ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
+                    ('TOPPADDING',    (0, 0), (-1, -1), 0),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+                ])),
+          inner]],
+        colWidths=[3 * mm, CONTENT_W - 3 * mm],
+    )
+    accent.setStyle(TableStyle([
+        ('LEFTPADDING',   (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
+        ('TOPPADDING',    (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+        ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
+    ]))
+    return [accent, Spacer(1, 2 * mm)]
 
 
 # ── Items table ───────────────────────────────────────────────────────────────
