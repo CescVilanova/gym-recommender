@@ -1,23 +1,28 @@
 #!/usr/bin/env python3
 """
-ProGym Email Sender
-Sends a PDF quote via Resend API (HTTPS) with attachment.
+ProGym Email Sender — Gmail API via OAuth2
+Sends a PDF quote from cesc@agentstudio.io with PDF attachment.
 
-Required env vars:
-  RESEND_API_KEY  — API key from resend.com (free tier: 100 emails/day)
-  EMAIL_FROM      — Verified sender address in Resend (e.g. sales@progym.es)
-                    For testing, use "onboarding@resend.dev" with your own address as TO
+Requires (in project root):
+  credentials.json  — OAuth2 client credentials from Google Cloud Console
+  token.json        — refresh token obtained via setup_gmail_auth.py
 
 Usage:
   python3 send_email.py <to_address> <pdf_path> <quote_number> \
       <client_name> <space_m2> <space_type> <objective> <nivel> <total_str>
 """
 
-import os, sys, json, base64
-import urllib.request, urllib.error
+import os, sys, json, base64, urllib.request, urllib.parse, urllib.error
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 from pathlib import Path
 
-RESEND_API_URL = "https://api.resend.com/emails"
+PROJECT_ROOT   = Path(__file__).parent.parent
+CREDENTIALS    = PROJECT_ROOT / "credentials.json"
+TOKEN_FILE     = PROJECT_ROOT / "token.json"
+GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
+TOKEN_URL      = "https://oauth2.googleapis.com/token"
 
 HTML_TEMPLATE = """\
 <div style="font-family: Arial, sans-serif; color: #1A1A1A; max-width: 600px;">
@@ -68,62 +73,79 @@ info@progym.es | +34 93 271 27 91
 """
 
 
+def _refresh_access_token(tokens: dict, creds: dict) -> str:
+    data = urllib.parse.urlencode({
+        "client_id":     creds["client_id"],
+        "client_secret": creds["client_secret"],
+        "refresh_token": tokens["refresh_token"],
+        "grant_type":    "refresh_token",
+    }).encode()
+    req = urllib.request.Request(
+        TOKEN_URL, data=data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"}
+    )
+    with urllib.request.urlopen(req) as r:
+        resp = json.loads(r.read())
+    new_access = resp["access_token"]
+    tokens["access_token"] = new_access
+    TOKEN_FILE.write_text(json.dumps(tokens, indent=2))
+    return new_access
+
+
+def _get_access_token() -> str:
+    if not CREDENTIALS.exists():
+        raise FileNotFoundError(f"No se encuentra {CREDENTIALS}")
+    if not TOKEN_FILE.exists():
+        raise FileNotFoundError(f"No se encuentra {TOKEN_FILE} — ejecuta el flujo OAuth primero")
+    creds  = json.loads(CREDENTIALS.read_text())["installed"]
+    tokens = json.loads(TOKEN_FILE.read_text())
+    return _refresh_access_token(tokens, creds)
+
+
 def send_quote(to_address: str, pdf_path: str, quote_number: str,
                client_name: str, space_m2: str, space_type: str,
                objective: str, nivel: str, total: str) -> None:
-
-    api_key  = os.environ.get("RESEND_API_KEY")
-    from_addr = os.environ.get("EMAIL_FROM", "ProGym <onboarding@resend.dev>")
-
-    if not api_key:
-        raise EnvironmentError(
-            "Falta RESEND_API_KEY.\n"
-            "1. Crea cuenta gratuita en https://resend.com\n"
-            "2. Genera un API key en resend.com/api-keys\n"
-            "3. Añade RESEND_API_KEY=re_xxxx al archivo .env"
-        )
 
     pdf_path = Path(pdf_path)
     if not pdf_path.exists():
         raise FileNotFoundError(f"PDF no encontrado: {pdf_path}")
 
+    access_token = _get_access_token()
     ctx = dict(client_name=client_name, space_m2=space_m2, space_type=space_type,
                objective=objective, nivel=nivel, total=total)
 
-    with open(pdf_path, "rb") as f:
-        pdf_b64 = base64.b64encode(f.read()).decode("ascii")
+    # Build MIME message
+    msg = MIMEMultipart("mixed")
+    msg["To"]      = to_address
+    msg["Subject"] = f"Tu propuesta personalizada de gimnasio en casa — ProGym (#{quote_number})"
 
-    payload = {
-        "from":    from_addr,
-        "to":      [to_address],
-        "subject": f"Tu propuesta personalizada de gimnasio en casa — ProGym (#{quote_number})",
-        "html":    HTML_TEMPLATE.format(**ctx),
-        "text":    PLAIN_TEMPLATE.format(**ctx),
-        "attachments": [
-            {
-                "filename": pdf_path.name,
-                "content":  pdf_b64,
-            }
-        ],
-    }
+    alt = MIMEMultipart("alternative")
+    alt.attach(MIMEText(PLAIN_TEMPLATE.format(**ctx), "plain", "utf-8"))
+    alt.attach(MIMEText(HTML_TEMPLATE.format(**ctx),  "html",  "utf-8"))
+    msg.attach(alt)
+
+    with open(pdf_path, "rb") as f:
+        pdf_part = MIMEApplication(f.read(), _subtype="pdf")
+    pdf_part.add_header("Content-Disposition", "attachment", filename=pdf_path.name)
+    msg.attach(pdf_part)
+
+    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("ascii")
+    payload = json.dumps({"raw": raw}).encode("utf-8")
 
     req = urllib.request.Request(
-        RESEND_API_URL,
-        data=json.dumps(payload).encode("utf-8"),
+        GMAIL_SEND_URL, data=payload,
         headers={
-            "Authorization": f"Bearer {api_key}",
+            "Authorization": f"Bearer {access_token}",
             "Content-Type":  "application/json",
         },
         method="POST",
     )
-
     try:
-        with urllib.request.urlopen(req) as resp:
-            result = json.loads(resp.read())
+        with urllib.request.urlopen(req) as r:
+            result = json.loads(r.read())
         print(f"✓ Email enviado a {to_address} | id={result.get('id')} | adjunto: {pdf_path.name}")
     except urllib.error.HTTPError as e:
-        body = e.read().decode()
-        raise RuntimeError(f"Resend API error {e.code}: {body}")
+        raise RuntimeError(f"Gmail API error {e.code}: {e.read().decode()}")
 
 
 if __name__ == "__main__":
