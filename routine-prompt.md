@@ -49,7 +49,7 @@ Key columns:
 - `Código` — SKU
 - `Título` — product name
 - `Descripción` — description
-- `PVP estimado (€)` — price (IVA included, strip € and . separators to parse as float)
+- `PVP estimado (€)` — price (IVA included; format is `1,850 €` — strip `€`, spaces, and `,` thousands separator, then parse as float)
 - `Footprint uso m² *` — floor area needed
 - `Altura mín m *` — minimum ceiling height
 - `Espacio ok` — allowed space types (pipe or / separated)
