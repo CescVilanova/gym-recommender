@@ -176,12 +176,15 @@ def select_products(catalog: list[dict], info: dict, mapped: dict) -> list[dict]
     total_pvp = sum(p["pvp"] for p in always)
     total_fp  = sum(p["fp"]  for p in always)
     selected  = list(always)
+    seen_cats = {p["Categoría"] for p in always if p["Categoría"].strip()}
 
     def add(p):
         nonlocal total_pvp, total_fp
         selected.append(p)
         total_pvp += p["pvp"]
         total_fp  += p["fp"]
+        if p["Categoría"].strip():
+            seen_cats.add(p["Categoría"])
 
     def fits(p):
         return (total_pvp + p["pvp"] <= budget_pvp and
@@ -196,6 +199,8 @@ def select_products(catalog: list[dict], info: dict, mapped: dict) -> list[dict]
         return (ridx, -obj_score(p, tags), p["pvp"])
 
     for p in sorted(pool, key=sort_key):
+        if p["Categoría"].strip() in seen_cats:
+            continue
         if fits(p):
             add(p)
 
