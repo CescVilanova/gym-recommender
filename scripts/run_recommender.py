@@ -325,6 +325,16 @@ def main(submission_text: str) -> None:
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Uso: python3 run_recommender.py '<formless_text>'")
+        print("Uso: python3 run_recommender.py '<formless_text_or_json>'")
         sys.exit(1)
-    main(sys.argv[1])
+    raw = sys.argv[1]
+    # Accept plain text OR Formless JSON payload {"text": "...", ...}
+    try:
+        payload = json.loads(raw)
+        text = payload.get("text") or payload.get("submission") or raw
+        if isinstance(text, dict):
+            # nested object → reconstruct as key: value text
+            text = "\n".join(f"{k}: {v}" for k, v in text.items())
+    except (json.JSONDecodeError, TypeError):
+        text = raw
+    main(text)
