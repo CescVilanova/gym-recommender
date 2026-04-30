@@ -1,3 +1,7 @@
+## [apr 30, 2026, 3:06 PM] - Refactor: extract selection logic into script, simplify routine prompt
+- What changed: Refactor: extract selection logic into script, simplify routine prompt
+- Why: Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
 ## [apr 24, 2026, 2:16 PM] - Update catalog URL to GitHub raw asset
 - What changed: Update catalog URL to GitHub raw asset
 - Why: Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
