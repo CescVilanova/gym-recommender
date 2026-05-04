@@ -38,15 +38,7 @@ Derive `client_name` from the email prefix (e.g. `juan.garcia@...` → `Juan Gar
 
 ---
 
-## Step 1 — Install dependency
-
-```bash
-pip install reportlab --break-system-packages -q
-```
-
----
-
-## Step 2 — Download repo assets
+## Step 1 — Download repo assets
 
 ```python
 import urllib.request
@@ -57,7 +49,6 @@ files = {
     "/tmp/select_products.py": f"{BASE}/scripts/select_products.py",
     "/tmp/generate_quote.py":  f"{BASE}/scripts/generate_quote.py",
     "/tmp/catalog.csv":        f"{BASE}/catalog.csv",
-    "/tmp/progym_logo.png":    f"{BASE}/assets/logo_transparent.png",
 }
 
 for dest, url in files.items():
@@ -79,7 +70,7 @@ explaining that no products matched their constraints and ask them to contact Pr
 
 ---
 
-## Step 4 — Generate PDF
+## Step 4 — Generate HTML quote
 
 Build the quote JSON:
 
@@ -99,8 +90,10 @@ Build the quote JSON:
 Run:
 
 ```bash
-PROGYM_LOGO=/tmp/progym_logo.png python3 /tmp/generate_quote.py '<quote_json>' /tmp/Presupuesto_ProGym_<client>_<date>.pdf
+python3 /tmp/generate_quote.py '<quote_json>' /tmp/quote.html
 ```
+
+Read the contents of `/tmp/quote.html` — this is the HTML email body.
 
 ---
 
@@ -109,8 +102,8 @@ PROGYM_LOGO=/tmp/progym_logo.png python3 /tmp/generate_quote.py '<quote_json>' /
 Send in Spanish to `email_para_recibir_la_propuesta`:
 
 - **Subject:** `Tu propuesta personalizada de gimnasio en casa — ProGym`
-- **Body:** warm, consultative tone. Mention the space (m², tipo de espacio), objectives, and number of items selected. Include total estimated investment (with discount applied). Sign off as _El equipo de ProGym_.
-- **Attachment:** the generated PDF
+- **Body:** the full HTML content from `/tmp/quote.html` (send as HTML, not plain text)
+- No attachment needed — the quote is embedded in the email body
 
 ---
 

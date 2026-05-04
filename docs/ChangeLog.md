@@ -1,3 +1,7 @@
+## [apr 30, 2026, 4:23 PM] - Add setup.sh that exits cleanly regardless of pip availability
+- What changed: Add setup.sh that exits cleanly regardless of pip availability
+- Why: Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
 ## [apr 30, 2026, 3:06 PM] - Refactor: extract selection logic into script, simplify routine prompt
 - What changed: Refactor: extract selection logic into script, simplify routine prompt
 - Why: Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>

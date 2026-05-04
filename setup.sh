@@ -1,4 +1,3 @@
 #!/bin/bash
-# Dependencies are installed at runtime by the routine.
-# This script intentionally exits successfully.
-pip install reportlab --break-system-packages -q 2>/dev/null || true
+# No external dependencies required — generate_quote.py uses stdlib only.
+echo "Setup complete."
