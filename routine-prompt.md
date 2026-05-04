@@ -95,6 +95,7 @@ Build the quote JSON:
   "client_name": "<derived in Input step>",
   "client_address": "España",
   "commercial": "Sales Department",
+  "intro": "Gracias por compartir tu objetivo de <objetivo_principal> para un espacio de <metros_cuadrados> m² en <tipo_de_espacio>.",
   "items": "<output from Step 3>",
   "notes": "Presupuesto válido 30 días. Precios sujetos a disponibilidad de stock. IVA incluido en precios unitarios."
 }

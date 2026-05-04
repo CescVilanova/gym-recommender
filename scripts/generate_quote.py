@@ -14,6 +14,7 @@ JSON structure:
   "client_name": "Nombre Cliente",
   "client_address": "Ciudad\\nPaís",
   "commercial": "Sales Department",
+  "intro": "Gracias por compartir tu objetivo...",
   "items": [
     {
       "sku": "[B18]",
@@ -41,6 +42,7 @@ import sys
 import json
 import os
 from datetime import date
+from xml.sax.saxutils import escape
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
@@ -199,7 +201,16 @@ def build_quote(data: dict, output_path: str):
 
     # Meta row
     story.append(_meta_row(data))
-    story.append(Spacer(1, 8 * mm))
+    story.append(Spacer(1, 6 * mm))
+
+    if data.get('intro'):
+        intro_s = ParagraphStyle(
+            'Intro', fontName='Helvetica', fontSize=9.5,
+            textColor=TEXT_BLACK, leading=14, spaceAfter=6 * mm,
+        )
+        story.append(Paragraph(escape(str(data['intro'])), intro_s))
+    else:
+        story.append(Spacer(1, 2 * mm))
 
     # Items table
     story.append(_items_table(data['items']))
