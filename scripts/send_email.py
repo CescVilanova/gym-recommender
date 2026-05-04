@@ -15,15 +15,15 @@ import sys
 import os
 import json
 import base64
-import urllib.request
-import urllib.error
+import subprocess
+import tempfile
 
 
 RESEND_API_URL = 'https://api.resend.com/emails'
 
 
 def send(to_email: str, subject: str, body_path: str, pdf_path: str):
-    api_key  = os.environ.get('RESEND_API_KEY')
+    api_key   = os.environ.get('RESEND_API_KEY')
     from_addr = os.environ.get('RESEND_FROM', 'ProGym <noreply@progym.es>')
 
     if not api_key:
@@ -51,24 +51,31 @@ def send(to_email: str, subject: str, body_path: str, pdf_path: str):
         print(f"WARNING: PDF not found at {pdf_path}, sending without attachment.",
               file=sys.stderr)
 
-    data = json.dumps(payload).encode('utf-8')
-    req  = urllib.request.Request(
-        RESEND_API_URL,
-        data=data,
-        headers={
-            'Authorization': f'Bearer {api_key}',
-            'Content-Type':  'application/json',
-        },
-    )
+    # Write payload to a temp file so the API key never appears in the process list
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp:
+        json.dump(payload, tmp, ensure_ascii=False)
+        tmp_path = tmp.name
 
     try:
-        with urllib.request.urlopen(req) as resp:
-            result = json.loads(resp.read())
-        print(f"✓ Email sent to {to_email} (id: {result.get('id', '?')})")
-    except urllib.error.HTTPError as e:
-        body_err = e.read().decode('utf-8', errors='replace')
-        print(f"ERROR {e.code}: {body_err}", file=sys.stderr)
+        result = subprocess.run(
+            [
+                'curl', '--silent', '--show-error', '--fail-with-body',
+                '-X', 'POST', RESEND_API_URL,
+                '-H', f'Authorization: Bearer {api_key}',
+                '-H', 'Content-Type: application/json',
+                '-d', f'@{tmp_path}',
+            ],
+            capture_output=True, text=True,
+        )
+    finally:
+        os.unlink(tmp_path)
+
+    if result.returncode != 0:
+        print(f"ERROR: {result.stdout or result.stderr}", file=sys.stderr)
         sys.exit(1)
+
+    data = json.loads(result.stdout)
+    print(f"✓ Email sent to {to_email} (id: {data.get('id', '?')})")
 
 
 if __name__ == '__main__':
