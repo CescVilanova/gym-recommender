@@ -49,7 +49,16 @@ def parse_price(price_str):
     if not price_str:
         return 0.0
     cleaned = re.sub(r'[€\s]', '', str(price_str))
-    cleaned = cleaned.replace('.', '').replace(',', '.')
+    if ',' in cleaned and '.' in cleaned:
+        cleaned = cleaned.replace('.', '').replace(',', '.')
+    elif ',' in cleaned:
+        left, right = cleaned.rsplit(',', 1)
+        if len(right) == 3 and left.isdigit() and right.isdigit():
+            cleaned = left + right
+        else:
+            cleaned = cleaned.replace(',', '.')
+    else:
+        cleaned = cleaned.replace('.', '')
     try:
         return float(cleaned)
     except ValueError:
@@ -177,6 +186,10 @@ def select_products(form_text, catalog_path):
     candidates = []
     for row in catalog:
         sku = row.get('Código', '').strip()
+        title = row.get('Título', '').strip()
+
+        if not sku or not title:
+            continue
 
         if not espacio_ok(row.get('Espacio ok', ''), tipo_espacio):
             continue
@@ -238,6 +251,7 @@ def select_products(form_text, catalog_path):
             'sku':          f"[{sku}]",
             'name':         row.get('Título', ''),
             'description':  row.get('Descripción', ''),
+            'image':        row.get('Imagen', '').strip(),
             'qty':          1,
             'unit_price':   price,
             'discount_pct': discount_pct,

@@ -1,3 +1,7 @@
+## [may 4, 2026, 3:47 PM] - Add SMTP email sender script (Gmail connector cannot send, only draft)
+- What changed: Add SMTP email sender script (Gmail connector cannot send, only draft)
+- Why: Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
 ## [may 4, 2026, 3:19 PM] - Restore PDF generation flow (sandbox now allows reportlab install)
 - What changed: Restore PDF generation flow (sandbox now allows reportlab install)
 - Why: Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>

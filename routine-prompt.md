@@ -44,6 +44,7 @@ Derive `client_name` from the email prefix (e.g. `juan.garcia@...` → `Juan Gar
 Download the runtime assets:
 
 ```python
+import os
 import urllib.request
 
 BASE = "https://raw.githubusercontent.com/CescVilanova/gym-recommender/main"
@@ -53,10 +54,17 @@ files = {
     "/tmp/generate_quote.py":  f"{BASE}/scripts/generate_quote.py",
     "/tmp/send_email.py":      f"{BASE}/scripts/send_email.py",
     "/tmp/catalog.csv":        f"{BASE}/catalog.csv",
-    "/tmp/progym_logo.png":    f"{BASE}/assets/logo_transparent.png",
+    "/tmp/progym_logo.png":    f"{BASE}/assets/logo.png",
 }
 
 for dest, url in files.items():
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    urllib.request.urlretrieve(url, dest)
+
+for idx in range(36):
+    dest = f"/tmp/assets/catalog/resources/cellImage_1718493059_{idx}.jpg"
+    url = f"{BASE}/assets/catalog/resources/cellImage_1718493059_{idx}.jpg"
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
     urllib.request.urlretrieve(url, dest)
 ```
 
@@ -95,7 +103,7 @@ Build the quote JSON:
 Run:
 
 ```bash
-PROGYM_LOGO=/tmp/progym_logo.png python3 /tmp/generate_quote.py '<quote_json>' /tmp/Presupuesto_ProGym_<client>_<YYYYMMDD>.pdf
+PROGYM_LOGO=/tmp/progym_logo.png PROGYM_IMAGE_BASE=/tmp python3 /tmp/generate_quote.py '<quote_json>' /tmp/Presupuesto_ProGym_<client>_<YYYYMMDD>.pdf
 ```
 
 The PDF path is the attachment for Step 5.

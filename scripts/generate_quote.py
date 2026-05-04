@@ -19,6 +19,7 @@ JSON structure:
       "sku": "[B18]",
       "name": "Binom Steel Force Multigimnasio B18",
       "description": "Multigimnasio B18 ...",
+      "image": "assets/products/B18.png",
       "qty": 1,
       "unit_price": 2695.00,
       "discount_pct": 12.0
@@ -32,6 +33,8 @@ NOTE: unit_price values are IVA-included (PVP). The script computes net amounts
 
 The logo is loaded from PROGYM_LOGO env var (defaults to /tmp/progym_logo.png).
 If the file doesn't exist, the PDF is generated without a logo (text header only).
+Product images are loaded from each item's "image" value. Relative paths are
+resolved from PROGYM_IMAGE_BASE if set, otherwise from the current directory.
 """
 
 import sys
@@ -43,8 +46,10 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether,
+    Image as RLImage
 )
 from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
 
@@ -57,6 +62,7 @@ TEXT_BLACK = colors.HexColor('#1A1A1A')
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 LOGO_PATH = os.environ.get('PROGYM_LOGO', '/tmp/progym_logo.png')
+IMAGE_BASE = os.environ.get('PROGYM_IMAGE_BASE', os.getcwd())
 
 # ── Layout constants ──────────────────────────────────────────────────────────
 PAGE_W, PAGE_H = A4
@@ -73,6 +79,25 @@ COMPANY_INFO = (
     "ES B66634700"
 )
 FOOTER_TEXT = "info@progym.es  |  +34 93 271 27 91"
+
+
+def _fit_size(src_w, src_h, max_w, max_h):
+    ratio = min(max_w / src_w, max_h / src_h)
+    return src_w * ratio, src_h * ratio
+
+
+def _resolve_local_image_path(source):
+    if not source:
+        return ''
+
+    source = str(source).strip()
+    if source.startswith(('http://', 'https://')):
+        return ''
+    if os.path.isabs(source):
+        return source if os.path.exists(source) else ''
+
+    path = os.path.join(IMAGE_BASE, source)
+    return path if os.path.exists(path) else ''
 
 
 # ── Number formatters ─────────────────────────────────────────────────────────
@@ -101,15 +126,14 @@ def _draw_page_chrome(canvas, doc):
 
     # Logo or text fallback (top-left inside the black band)
     if os.path.exists(LOGO_PATH):
-        logo_h = HEADER_H - 10 * mm
-        logo_w = logo_h * 3.28
+        img_w, img_h = ImageReader(LOGO_PATH).getSize()
+        logo_w, logo_h = _fit_size(img_w, img_h, 68 * mm, HEADER_H - 8 * mm)
         canvas.drawImage(
             LOGO_PATH,
             MARGIN_H,
-            PAGE_H - HEADER_H + 3 * mm,
+            PAGE_H - HEADER_H + (HEADER_H - logo_h) / 2,
             width=logo_w,
             height=logo_h,
-            preserveAspectRatio=True,
             mask='auto',
         )
     else:
@@ -168,8 +192,8 @@ def build_quote(data: dict, output_path: str):
 
     # Quote title
     title_s = ParagraphStyle(
-        'Title', fontName='Helvetica-Bold', fontSize=26,
-        textColor=ORANGE, leading=32, spaceAfter=4 * mm,
+        'Title', fontName='Helvetica-Bold', fontSize=22,
+        textColor=ORANGE, leading=27, spaceAfter=4 * mm,
     )
     story.append(Paragraph(f"Presupuesto # {data['quote_number']}", title_s))
 
@@ -225,32 +249,34 @@ def _meta_row(data: dict) -> Table:
 
 # ── Items table ───────────────────────────────────────────────────────────────
 def _items_table(items: list) -> Table:
-    DESC_W   = CONTENT_W * 0.32
-    UNID_W   = 13 * mm
-    DISC_W   = 13 * mm
-    remaining = CONTENT_W - DESC_W - UNID_W - DISC_W
+    IMAGE_W = 18 * mm
+    DESC_W  = 41 * mm
+    UNID_W  = 12 * mm
+    DISC_W  = 12 * mm
+    remaining = CONTENT_W - IMAGE_W - DESC_W - UNID_W - DISC_W
     BASE_W        = remaining / 6.4
     PRICE_TDESC_W = BASE_W * 1.4
     PRICE_W       = (remaining - PRICE_TDESC_W) / 5.0
 
-    col_w = [DESC_W, UNID_W,
+    col_w = [IMAGE_W, DESC_W, UNID_W,
              PRICE_W, PRICE_W, DISC_W,
              PRICE_W, PRICE_W, PRICE_TDESC_W, PRICE_W]
 
-    hdr_s   = ParagraphStyle('H',  fontName='Helvetica', fontSize=6.5,
-                              textColor=DARK_GRAY, leading=8, alignment=TA_CENTER)
-    hdr_l_s = ParagraphStyle('HL', fontName='Helvetica', fontSize=6.5,
-                              textColor=DARK_GRAY, leading=8)
-    hdr_o_s = ParagraphStyle('HO', fontName='Helvetica', fontSize=6.5,
-                              textColor=ORANGE, leading=8, alignment=TA_CENTER)
-    cell_s  = ParagraphStyle('C',  fontName='Helvetica', fontSize=7.5,
-                              textColor=TEXT_BLACK, leading=10)
-    num_s   = ParagraphStyle('N',  fontName='Helvetica', fontSize=7.5,
-                              textColor=TEXT_BLACK, leading=10, alignment=TA_RIGHT)
-    ora_s   = ParagraphStyle('O',  fontName='Helvetica', fontSize=7.5,
-                              textColor=ORANGE, leading=10, alignment=TA_RIGHT)
+    hdr_s   = ParagraphStyle('H',  fontName='Helvetica', fontSize=5.8,
+                              textColor=DARK_GRAY, leading=7, alignment=TA_CENTER)
+    hdr_l_s = ParagraphStyle('HL', fontName='Helvetica', fontSize=5.8,
+                              textColor=DARK_GRAY, leading=7)
+    hdr_o_s = ParagraphStyle('HO', fontName='Helvetica', fontSize=5.8,
+                              textColor=ORANGE, leading=7, alignment=TA_CENTER)
+    cell_s  = ParagraphStyle('C',  fontName='Helvetica', fontSize=7,
+                              textColor=TEXT_BLACK, leading=9)
+    num_s   = ParagraphStyle('N',  fontName='Helvetica', fontSize=7,
+                              textColor=TEXT_BLACK, leading=9, alignment=TA_RIGHT)
+    ora_s   = ParagraphStyle('O',  fontName='Helvetica', fontSize=7,
+                              textColor=ORANGE, leading=9, alignment=TA_RIGHT)
 
     header_row = [
+        Paragraph('Imagen',             hdr_l_s),
         Paragraph('Descripción',        hdr_l_s),
         Paragraph('Unid',               hdr_s),
         Paragraph('Precio\nUnidad',     hdr_s),
@@ -291,8 +317,16 @@ def _items_table(items: list) -> Table:
             short = desc[:120] + ('...' if len(desc) > 120 else '')
             full_desc += f'<br/><font size="6.5" color="#666666">{short}</font>'
         desc_para = Paragraph(full_desc, cell_s)
+        image_path = _resolve_local_image_path(item.get('image', ''))
+        if image_path:
+            img_w, img_h = ImageReader(image_path).getSize()
+            draw_w, draw_h = _fit_size(img_w, img_h, IMAGE_W - 3 * mm, 15 * mm)
+            image_cell = RLImage(image_path, width=draw_w, height=draw_h)
+        else:
+            image_cell = Spacer(1, 1)
 
         row = [
+            image_cell,
             desc_para,
             Paragraph(f"{_fmt2(qty)} Ud", cell_s),
             Paragraph(_fmt2(unit_price),               num_s),
@@ -317,8 +351,8 @@ def _items_table(items: list) -> Table:
     t = Table(table_data, colWidths=col_w, repeatRows=1)
     t.setStyle(TableStyle([
         ('VALIGN',       (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN',        (0, 0), (0,  -1), 'LEFT'),
-        ('ALIGN',        (1, 0), (-1, -1), 'RIGHT'),
+        ('ALIGN',        (0, 0), (1,  -1), 'LEFT'),
+        ('ALIGN',        (2, 0), (-1, -1), 'RIGHT'),
         ('LEFTPADDING',  (0, 0), (-1, -1), 2),
         ('RIGHTPADDING', (0, 0), (-1, -1), 3),
         *row_styles,
