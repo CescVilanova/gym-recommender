@@ -40,6 +40,9 @@ Derive `client_name` from the email prefix (e.g. `juan.garcia@...` → `Juan Gar
 
 ## Step 1 — Download repo assets
 
+`reportlab` is already installed by the environment's setup script.
+Download the runtime assets:
+
 ```python
 import urllib.request
 
@@ -49,6 +52,7 @@ files = {
     "/tmp/select_products.py": f"{BASE}/scripts/select_products.py",
     "/tmp/generate_quote.py":  f"{BASE}/scripts/generate_quote.py",
     "/tmp/catalog.csv":        f"{BASE}/catalog.csv",
+    "/tmp/progym_logo.png":    f"{BASE}/assets/logo_transparent.png",
 }
 
 for dest, url in files.items():
@@ -70,7 +74,7 @@ explaining that no products matched their constraints and ask them to contact Pr
 
 ---
 
-## Step 4 — Generate HTML quote
+## Step 4 — Generate PDF quote
 
 Build the quote JSON:
 
@@ -90,10 +94,10 @@ Build the quote JSON:
 Run:
 
 ```bash
-python3 /tmp/generate_quote.py '<quote_json>' /tmp/quote.html
+PROGYM_LOGO=/tmp/progym_logo.png python3 /tmp/generate_quote.py '<quote_json>' /tmp/Presupuesto_ProGym_<client>_<YYYYMMDD>.pdf
 ```
 
-Read the contents of `/tmp/quote.html` — this is the HTML email body.
+The PDF path is the attachment for Step 5.
 
 ---
 
@@ -102,8 +106,10 @@ Read the contents of `/tmp/quote.html` — this is the HTML email body.
 Send in Spanish to `email_para_recibir_la_propuesta`:
 
 - **Subject:** `Tu propuesta personalizada de gimnasio en casa — ProGym`
-- **Body:** the full HTML content from `/tmp/quote.html` (send as HTML, not plain text)
-- No attachment needed — the quote is embedded in the email body
+- **Body (plain text or simple HTML):** warm consultative message in Spanish — mention the space (m², tipo de espacio), objectives, total estimated investment with discount, and that the full quote is attached. Sign off as _El equipo de ProGym_.
+- **Attachment:** the PDF generated in Step 4
+
+If the PDF generation fails, send the email without an attachment and explain that the team will follow up manually.
 
 ---
 
@@ -111,4 +117,3 @@ Send in Spanish to `email_para_recibir_la_propuesta`:
 
 - All output (email body, logs) must be in Spanish.
 - Never invent products outside the catalog.
-- If the PDF generation fails, send the email without attachment and mention the team will follow up manually.

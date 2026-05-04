@@ -1,3 +1,7 @@
+## [may 4, 2026, 10:24 AM] - Replace PDF generation with stdlib HTML email, remove reportlab dependency
+- What changed: Replace PDF generation with stdlib HTML email, remove reportlab dependency
+- Why: Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
 ## [apr 30, 2026, 4:23 PM] - Add setup.sh that exits cleanly regardless of pip availability
 - What changed: Add setup.sh that exits cleanly regardless of pip availability
 - Why: Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>

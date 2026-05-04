@@ -1,3 +1,3 @@
 #!/bin/bash
-# No external dependencies required — generate_quote.py uses stdlib only.
-echo "Setup complete."
+# Install Python dependencies for PDF generation.
+pip install reportlab --break-system-packages -q
