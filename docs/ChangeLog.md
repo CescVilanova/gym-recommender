@@ -1,3 +1,7 @@
+## [may 4, 2026, 3:19 PM] - Restore PDF generation flow (sandbox now allows reportlab install)
+- What changed: Restore PDF generation flow (sandbox now allows reportlab install)
+- Why: Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
 ## [may 4, 2026, 10:24 AM] - Replace PDF generation with stdlib HTML email, remove reportlab dependency
 - What changed: Replace PDF generation with stdlib HTML email, remove reportlab dependency
 - Why: Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>

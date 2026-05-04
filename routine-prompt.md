@@ -51,6 +51,7 @@ BASE = "https://raw.githubusercontent.com/CescVilanova/gym-recommender/main"
 files = {
     "/tmp/select_products.py": f"{BASE}/scripts/select_products.py",
     "/tmp/generate_quote.py":  f"{BASE}/scripts/generate_quote.py",
+    "/tmp/send_email.py":      f"{BASE}/scripts/send_email.py",
     "/tmp/catalog.csv":        f"{BASE}/catalog.csv",
     "/tmp/progym_logo.png":    f"{BASE}/assets/logo_transparent.png",
 }
@@ -101,15 +102,36 @@ The PDF path is the attachment for Step 5.
 
 ---
 
-## Step 5 — Send via Gmail
+## Step 5 — Send the email
 
-Send in Spanish to `email_para_recibir_la_propuesta`:
+The Gmail MCP connector cannot send emails — only create drafts. Use the `send_email.py`
+script instead, which sends via Gmail SMTP. Credentials are provided through the Routine's
+environment variables (`GMAIL_USER` and `GMAIL_APP_PASSWORD`).
 
-- **Subject:** `Tu propuesta personalizada de gimnasio en casa — ProGym`
-- **Body (plain text or simple HTML):** warm consultative message in Spanish — mention the space (m², tipo de espacio), objectives, total estimated investment with discount, and that the full quote is attached. Sign off as _El equipo de ProGym_.
-- **Attachment:** the PDF generated in Step 4
+### 5a. Write the email body
 
-If the PDF generation fails, send the email without an attachment and explain that the team will follow up manually.
+Write a warm, consultative message in Spanish to `/tmp/email_body.html`. Include:
+- Greeting (Hola, ...)
+- One sentence acknowledging their goal (objetivo) and space (m² + tipo de espacio)
+- One sentence stating total estimated investment with discount applied
+- One sentence saying the full breakdown is attached
+- Closing: _Si tienes alguna pregunta, responde a este correo o llámanos al +34 93 271 27 91._
+- Sign off: _El equipo de ProGym_
+
+Format as simple HTML (use `<p>` tags, no inline styles needed — keep it short).
+
+### 5b. Send
+
+```bash
+python3 /tmp/send_email.py \
+  "<email_para_recibir_la_propuesta>" \
+  "Tu propuesta personalizada de gimnasio en casa — ProGym" \
+  /tmp/email_body.html \
+  /tmp/Presupuesto_ProGym_<client>_<YYYYMMDD>.pdf
+```
+
+If the PDF generation in Step 4 failed, pass an empty string as the last argument — the
+script will send the email without an attachment.
 
 ---
 
