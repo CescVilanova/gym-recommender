@@ -2,74 +2,80 @@
 """
 ProGym Email Sender
 
-Sends a quote email via Gmail SMTP with a PDF attachment.
-Requires GMAIL_USER and GMAIL_APP_PASSWORD env vars.
+Sends a quote email via Resend HTTP API with a PDF attachment.
+Requires RESEND_API_KEY and RESEND_FROM env vars.
 
 Usage:
     python3 send_email.py <to_email> <subject> <body_html_path> <pdf_path>
 
-The body argument is a PATH to an HTML or text file (avoids shell-escaping issues).
+pdf_path may be an empty string to send without attachment.
 """
 
 import sys
 import os
-import smtplib
-import ssl
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
+import json
+import base64
+import subprocess
+import tempfile
 
 
-SMTP_HOST = 'smtp.gmail.com'
-SMTP_PORT = 465
+RESEND_API_URL = 'https://api.resend.com/emails'
 
 
 def send(to_email: str, subject: str, body_path: str, pdf_path: str):
-    user     = os.environ.get('GMAIL_USER')
-    password = os.environ.get('GMAIL_APP_PASSWORD')
+    api_key   = os.environ.get('RESEND_API_KEY')
+    from_addr = os.environ.get('RESEND_FROM', 'ProGym <noreply@progym.es>')
 
-    if not user or not password:
-        print("ERROR: GMAIL_USER and GMAIL_APP_PASSWORD env vars are required.",
-              file=sys.stderr)
+    if not api_key:
+        print("ERROR: RESEND_API_KEY env var is required.", file=sys.stderr)
         sys.exit(1)
 
-    # Read body content
     with open(body_path, 'r', encoding='utf-8') as f:
         body = f.read()
 
-    # Build message
-    msg = MIMEMultipart()
-    msg['From']    = f"ProGym <{user}>"
-    msg['To']      = to_email
-    msg['Subject'] = subject
+    payload = {
+        'from':    from_addr,
+        'to':      [to_email],
+        'subject': subject,
+        'html':    body,
+    }
 
-    # Detect HTML vs plain text by file extension
-    body_type = 'html' if body_path.lower().endswith('.html') else 'plain'
-    msg.attach(MIMEText(body, body_type, 'utf-8'))
-
-    # Attach PDF if provided and exists
     if pdf_path and os.path.exists(pdf_path):
         with open(pdf_path, 'rb') as f:
-            part = MIMEBase('application', 'pdf')
-            part.set_payload(f.read())
-        encoders.encode_base64(part)
-        part.add_header(
-            'Content-Disposition',
-            f'attachment; filename="{os.path.basename(pdf_path)}"'
-        )
-        msg.attach(part)
+            encoded = base64.b64encode(f.read()).decode('ascii')
+        payload['attachments'] = [{
+            'filename': os.path.basename(pdf_path),
+            'content':  encoded,
+        }]
     elif pdf_path:
         print(f"WARNING: PDF not found at {pdf_path}, sending without attachment.",
               file=sys.stderr)
 
-    # Send
-    context = ssl.create_default_context()
-    with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=context) as server:
-        server.login(user, password)
-        server.send_message(msg)
+    # Write payload to a temp file so the API key never appears in the process list
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp:
+        json.dump(payload, tmp, ensure_ascii=False)
+        tmp_path = tmp.name
 
-    print(f"✓ Email sent to {to_email}")
+    try:
+        result = subprocess.run(
+            [
+                'curl', '--silent', '--show-error', '--fail-with-body',
+                '-X', 'POST', RESEND_API_URL,
+                '-H', f'Authorization: Bearer {api_key}',
+                '-H', 'Content-Type: application/json',
+                '-d', f'@{tmp_path}',
+            ],
+            capture_output=True, text=True,
+        )
+    finally:
+        os.unlink(tmp_path)
+
+    if result.returncode != 0:
+        print(f"ERROR: {result.stdout or result.stderr}", file=sys.stderr)
+        sys.exit(1)
+
+    data = json.loads(result.stdout)
+    print(f"✓ Email sent to {to_email} (id: {data.get('id', '?')})")
 
 
 if __name__ == '__main__':

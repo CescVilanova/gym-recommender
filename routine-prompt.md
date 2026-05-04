@@ -104,9 +104,9 @@ The PDF path is the attachment for Step 5.
 
 ## Step 5 — Send the email
 
-The Gmail MCP connector cannot send emails — only create drafts. Use the `send_email.py`
-script instead, which sends via Gmail SMTP. Credentials are provided through the Routine's
-environment variables (`GMAIL_USER` and `GMAIL_APP_PASSWORD`).
+Use the `send_email.py` script, which sends via the Resend HTTP API (HTTPS on port 443 —
+no SMTP required). Credentials are provided through the Routine's environment variables
+(`RESEND_API_KEY` and `RESEND_FROM`).
 
 ### 5a. Write the email body
 

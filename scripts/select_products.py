@@ -238,6 +238,7 @@ def select_products(form_text, catalog_path):
             'sku':          f"[{sku}]",
             'name':         row.get('Título', ''),
             'description':  row.get('Descripción', ''),
+            'image_url':    row.get('Imagen', '').strip(),
             'qty':          1,
             'unit_price':   price,
             'discount_pct': discount_pct,

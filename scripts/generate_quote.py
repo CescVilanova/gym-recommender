@@ -37,14 +37,18 @@ If the file doesn't exist, the PDF is generated without a logo (text header only
 import sys
 import json
 import os
+import tempfile
+import urllib.request
 from datetime import date
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether,
+    Image as RLImage,
 )
 from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
 
@@ -101,15 +105,15 @@ def _draw_page_chrome(canvas, doc):
 
     # Logo or text fallback (top-left inside the black band)
     if os.path.exists(LOGO_PATH):
+        iw, ih = ImageReader(LOGO_PATH).getSize()
         logo_h = HEADER_H - 10 * mm
-        logo_w = logo_h * 3.28
+        logo_w = logo_h * (iw / ih)
         canvas.drawImage(
             LOGO_PATH,
             MARGIN_H,
-            PAGE_H - HEADER_H + 3 * mm,
+            PAGE_H - HEADER_H + (HEADER_H - logo_h) / 2,
             width=logo_w,
             height=logo_h,
-            preserveAspectRatio=True,
             mask='auto',
         )
     else:
@@ -223,6 +227,24 @@ def _meta_row(data: dict) -> Table:
     return t
 
 
+THUMB_H = 14 * mm   # product thumbnail height inside description cell
+THUMB_W = 18 * mm   # max thumbnail width
+
+
+def _fetch_product_image(url: str):
+    """Download a product image URL to a temp file; return the path or None."""
+    if not url or not url.strip():
+        return None
+    try:
+        suffix = '.png' if url.lower().endswith('.png') else '.jpg'
+        fd, path = tempfile.mkstemp(suffix=suffix)
+        os.close(fd)
+        urllib.request.urlretrieve(url.strip(), path)
+        return path
+    except Exception:
+        return None
+
+
 # ── Items table ───────────────────────────────────────────────────────────────
 def _items_table(items: list) -> Table:
     DESC_W   = CONTENT_W * 0.32
@@ -232,6 +254,11 @@ def _items_table(items: list) -> Table:
     BASE_W        = remaining / 6.4
     PRICE_TDESC_W = BASE_W * 1.4
     PRICE_W       = (remaining - PRICE_TDESC_W) / 5.0
+
+    # Reserve space for thumbnail only when at least one item has an image
+    has_images = any(item.get('image_url', '').strip() for item in items)
+    IMG_COL_W  = (THUMB_W + 2 * mm) if has_images else 0
+    TEXT_COL_W = DESC_W - IMG_COL_W
 
     col_w = [DESC_W, UNID_W,
              PRICE_W, PRICE_W, DISC_W,
@@ -282,9 +309,10 @@ def _items_table(items: list) -> Table:
                             / (1 + IVA_RATE)
         ahorro_total      = qty * unit_price - precio_total_desc
 
-        sku  = item.get('sku', '')
-        name = item.get('name', '')
-        desc = item.get('description', '')
+        sku       = item.get('sku', '')
+        name      = item.get('name', '')
+        desc      = item.get('description', '')
+        image_url = item.get('image_url', '')
 
         full_desc = f"{sku} {name}"
         if desc and desc.strip() and desc.strip() != name.strip():
@@ -292,8 +320,31 @@ def _items_table(items: list) -> Table:
             full_desc += f'<br/><font size="6.5" color="#666666">{short}</font>'
         desc_para = Paragraph(full_desc, cell_s)
 
+        if has_images:
+            img_path = _fetch_product_image(image_url)
+            if img_path:
+                iw, ih = ImageReader(img_path).getSize()
+                scale  = min(THUMB_W / iw, THUMB_H / ih)
+                thumb  = RLImage(img_path, width=iw * scale, height=ih * scale)
+            else:
+                thumb = Spacer(IMG_COL_W, THUMB_H)
+            inner = Table(
+                [[thumb, desc_para]],
+                colWidths=[IMG_COL_W, TEXT_COL_W],
+            )
+            inner.setStyle(TableStyle([
+                ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING',   (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
+                ('TOPPADDING',    (0, 0), (-1, -1), 0),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+            ]))
+            desc_cell = inner
+        else:
+            desc_cell = desc_para
+
         row = [
-            desc_para,
+            desc_cell,
             Paragraph(f"{_fmt2(qty)} Ud", cell_s),
             Paragraph(_fmt2(unit_price),               num_s),
             Paragraph(_fmt1(precio_total),             num_s),
