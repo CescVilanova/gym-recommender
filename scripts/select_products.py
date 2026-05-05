@@ -211,18 +211,24 @@ def select_products(form_text, catalog_path):
     candidates.sort(key=sort_key)
 
     # Greedy bundle build
-    selected      = []
-    total_fp      = 0.0
-    total_price   = 0.0
+    selected         = []
+    total_fp         = 0.0
+    total_price      = 0.0
+    used_categories  = set()
 
     for c in candidates:
-        sku      = c['sku']
-        price    = c['price']
+        sku       = c['sku']
+        price     = c['price']
         footprint = c['footprint']
-        always   = sku in ALWAYS_INCLUDE
+        always    = sku in ALWAYS_INCLUDE
+        category  = c['row'].get('Categoría', '').strip()
 
         # Skip zero-price items unless always-include
         if price == 0 and not always:
+            continue
+
+        # One product per category (e.g. no two treadmills)
+        if category and category in used_categories and not always:
             continue
 
         new_fp    = total_fp    + footprint
@@ -246,6 +252,8 @@ def select_products(form_text, catalog_path):
 
         total_fp    = new_fp
         total_price = new_price
+        if category:
+            used_categories.add(category)
 
     return selected
 
